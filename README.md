@@ -1,5 +1,9 @@
 # 🧾 SplitCraft
 
+[![Tests](https://github.com/gauravrai1/SplitCraft/actions/workflows/test.yml/badge.svg)](https://github.com/gauravrai1/SplitCraft/actions/workflows/test.yml)
+![Node >=14](https://img.shields.io/badge/node-%3E%3D14-339933?logo=node.js&logoColor=white)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+
 A local-first web application for auditing transactions, classifying expenses, and splitting costs across people.
 
 ## 📸 Screenshots
