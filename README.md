@@ -109,6 +109,15 @@ Date,Description,Amount,Institution,Account_Type,Account_Name
 - `Account_Type` - Chequing or Credit Card
 - `Account_Name` - Specific account name
 
+### Using an LLM to Standardize Input CSVs
+
+If you use an LLM to convert bank exports or statement data into this CSV schema, read [LLM_STANDARDIZATION_GUIDE.md](/Users/gauravrai/Desktop/Projects/SplitCraft/LLM_STANDARDIZATION_GUIDE.md) first.
+
+Important:
+- SplitCraft itself runs locally, but any external LLM tool may store, log, or process your data outside your machine.
+- Redact all PII and sensitive financial identifiers before sending data to any LLM.
+- Review the generated CSV manually before importing it.
+
 ## 📤 Outputs
 
 All exports are saved to the `output/` folder:
@@ -191,6 +200,8 @@ Session state (auto-saved every 500ms):
 - ✅ No data sent to external servers
 - ✅ Works offline (except initial app load)
 - ✅ Your financial data stays on your machine
+
+If you choose to use a third-party LLM to prepare your CSV, that privacy model changes. See [LLM_STANDARDIZATION_GUIDE.md](/Users/gauravrai/Desktop/Projects/SplitCraft/LLM_STANDARDIZATION_GUIDE.md) for the recommended redaction and review workflow.
 
 ## 🐛 Troubleshooting
 
