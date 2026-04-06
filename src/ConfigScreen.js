@@ -7,11 +7,27 @@ function ConfigScreen({ onStart }) {
   const [error, setError] = useState('');
   const [dragActive, setDragActive] = useState(null);
   const [statePath, setStatePath] = useState('audit-state');
+  const [dateMode, setDateMode] = useState('custom');
   const [autoLoadAttempted, setAutoLoadAttempted] = useState(false);
   const [loading, setLoading] = useState(true);
   const fileRef = useRef();
   const stateRef = useRef();
   const dragRef = useRef();
+
+  const applyMonthPreset = (monthOffset) => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + monthOffset + 1, 0);
+    const fmtDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    setCfg(prev => ({
+      ...prev,
+      filters: {
+        ...prev.filters,
+        startDate: fmtDate(start),
+        endDate: fmtDate(end),
+      },
+    }));
+  };
 
   // Load config and saved state on mount
   useEffect(() => {
@@ -20,6 +36,7 @@ function ConfigScreen({ onStart }) {
         await loadConfigFromServer();
         setCfg(DEFAULT_CONFIG);
         setStatePath(DEFAULT_CONFIG.statePath || 'audit-state');
+        setDateMode('custom');
       } catch (e) {
         console.log('Using default config');
       }
@@ -207,15 +224,84 @@ function ConfigScreen({ onStart }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Start Date</label>
-            <input type="date" value={cfg.filters.startDate} onChange={e => setCfg(p => ({ ...p, filters: { ...p.filters, startDate: e.target.value } }))} className="w-full border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg px-3 py-2 text-sm" />
+        <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Date Range</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Only transactions inside this window will be loaded into the audit.</p>
+            </div>
+            <button
+              onClick={() => {
+                setDateMode('custom');
+                setCfg(p => ({ ...p, filters: { ...p.filters, startDate: '', endDate: '' } }));
+              }}
+              className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Clear
+            </button>
           </div>
+
           <div>
-            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">End Date</label>
-            <input type="date" value={cfg.filters.endDate} onChange={e => setCfg(p => ({ ...p, filters: { ...p.filters, endDate: e.target.value } }))} className="w-full border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg px-3 py-2 text-sm" />
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Period</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                onClick={() => {
+                  setDateMode('currentMonth');
+                  applyMonthPreset(0);
+                }}
+                className={`px-3 py-2 rounded-lg text-xs font-medium transition ${dateMode === 'currentMonth' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+              >
+                Current Month
+              </button>
+              <button
+                onClick={() => {
+                  setDateMode('previousMonth');
+                  applyMonthPreset(-1);
+                }}
+                className={`px-3 py-2 rounded-lg text-xs font-medium transition ${dateMode === 'previousMonth' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+              >
+                Previous Month
+              </button>
+              <button
+                onClick={() => {
+                  setDateMode('previousPreviousMonth');
+                  applyMonthPreset(-2);
+                }}
+                className={`px-3 py-2 rounded-lg text-xs font-medium transition ${dateMode === 'previousPreviousMonth' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+              >
+                Two Months Ago
+              </button>
+              <button
+                onClick={() => setDateMode('custom')}
+                className={`px-3 py-2 rounded-lg text-xs font-medium transition ${dateMode === 'custom' ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}
+              >
+                Custom
+              </button>
+            </div>
           </div>
+
+          {dateMode === 'custom' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Start Date</label>
+                <input
+                  type="date"
+                  value={cfg.filters.startDate}
+                  onChange={e => setCfg(p => ({ ...p, filters: { ...p.filters, startDate: e.target.value } }))}
+                  className="w-full border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">End Date</label>
+                <input
+                  type="date"
+                  value={cfg.filters.endDate}
+                  onChange={e => setCfg(p => ({ ...p, filters: { ...p.filters, endDate: e.target.value } }))}
+                  className="w-full border border-slate-300 dark:border-slate-600 dark:bg-slate-700 dark:text-white rounded-lg px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-2">
