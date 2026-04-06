@@ -33,6 +33,77 @@ function parseCSV(text) {
   }).filter(r => r.Date && r.Amount && !isNaN(parseFloat(r.Amount)));
 }
 
+function getTransactionStatus(derivedEntry) {
+  return derivedEntry?.status || 'pending';
+}
+
+function getAllTransactions(raw, derived) {
+  return raw.map(t => ({ ...t, d: derived.transactions[t.id] || {} }));
+}
+
+function matchesDateFilter(date, filterType, customStart, customEnd) {
+  const now = new Date();
+  if (filterType === 'thisMonth') {
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return date.startsWith(ym);
+  }
+  if (filterType === 'lastMonth') {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return date.startsWith(ym);
+  }
+  if (filterType === 'custom') {
+    if (customStart && date < customStart) return false;
+    if (customEnd && date > customEnd) return false;
+  }
+  return true;
+}
+
+function transactionIncludesPerson(transaction, person) {
+  if (person === 'all') return true;
+  const participants = transaction.d?.splitConfig?.participants || [];
+  return participants.some(p => p.name === person);
+}
+
+function getFilteredTransactions(raw, derived, filters = {}) {
+  const {
+    filterType = 'all',
+    customStart = '',
+    customEnd = '',
+    statusFilter = 'audited',
+    splitFilter = 'all',
+    personFilter = 'all',
+    search = '',
+  } = filters;
+
+  const searchText = search.trim().toLowerCase();
+
+  return getAllTransactions(raw, derived).filter(transaction => {
+    const status = getTransactionStatus(transaction.d);
+    if (statusFilter === 'audited' && status === 'pending') return false;
+    if (statusFilter !== 'all' && statusFilter !== 'audited' && status !== statusFilter) return false;
+
+    if (!matchesDateFilter(transaction.raw.Date, filterType, customStart, customEnd)) return false;
+
+    if (splitFilter === 'split' && !transaction.d?.isSplit) return false;
+    if (splitFilter === 'nonSplit' && transaction.d?.isSplit) return false;
+
+    if (!transactionIncludesPerson(transaction, personFilter)) return false;
+
+    if (searchText) {
+      const haystack = [
+        transaction.raw.Description,
+        transaction.raw.Institution,
+        transaction.raw.Account_Type,
+        transaction.raw.Account_Name,
+      ].join(' ').toLowerCase();
+      if (!haystack.includes(searchText)) return false;
+    }
+
+    return true;
+  });
+}
+
 function escapeCSVField(value) {
   return `"${String(value || '').replace(/"/g, '""')}"`;
 }
@@ -45,10 +116,30 @@ function isSplitConfigValid(splitConfig, amount) {
   return Math.abs(total - target) < 0.02;
 }
 
-function buildProcessedTransactionsCSV(raw, derived) {
+function getSplitShare(splitConfig, absAmount, participant) {
+  if (splitConfig.type === 'percentage') return +(absAmount * participant.value / 100).toFixed(2);
+  if (splitConfig.type === 'equal') return +(absAmount / splitConfig.participants.length).toFixed(2);
+  return participant.value;
+}
+
+function buildSplitLedgerCSV(raw, derived, filters) {
+  const headers = 'transaction_id,person,amount';
+  const rows = [];
+  getFilteredTransactions(raw, derived, filters).forEach(t => {
+    const d = t.d;
+    if (d?.status !== 'kept' || !d.isSplit || !d.splitConfig) return;
+    const absAmount = Math.abs(t.raw.Amount);
+    d.splitConfig.participants.forEach(participant => {
+      rows.push(`${t.id},${participant.name},${getSplitShare(d.splitConfig, absAmount, participant)}`);
+    });
+  });
+  return headers + '\n' + rows.join('\n');
+}
+
+function buildProcessedTransactionsCSV(raw, derived, filters) {
   const headers = 'id,date,description,amount,institution,account_type,account_name,status,is_split,note';
-  const rows = raw.map(t => {
-    const d = derived.transactions[t.id] || {};
+  const rows = getFilteredTransactions(raw, derived, filters).map(t => {
+    const d = t.d || {};
     if (!d.status || d.status === 'pending') return null;
     return [
       t.id,
@@ -66,24 +157,49 @@ function buildProcessedTransactionsCSV(raw, derived) {
   return headers + '\n' + rows.join('\n');
 }
 
-function getSplitShare(splitConfig, absAmount, participant) {
-  if (splitConfig.type === 'percentage') return +(absAmount * participant.value / 100).toFixed(2);
-  if (splitConfig.type === 'equal') return +(absAmount / splitConfig.participants.length).toFixed(2);
-  return participant.value;
-}
+function computeAnalysisStats(raw, derived, filters = {}) {
+  const all = getAllTransactions(raw, derived);
+  const filtered = getFilteredTransactions(raw, derived, filters);
+  const processed = all.filter(t => ['kept', 'discarded'].includes(getTransactionStatus(t.d)));
+  const kept = all.filter(t => getTransactionStatus(t.d) === 'kept');
+  const discarded = all.filter(t => getTransactionStatus(t.d) === 'discarded');
+  const filteredKept = filtered.filter(t => getTransactionStatus(t.d) === 'kept');
+  const filteredDiscarded = filtered.filter(t => getTransactionStatus(t.d) === 'discarded');
 
-function buildSplitLedgerCSV(raw, derived) {
-  const headers = 'transaction_id,person,amount';
-  const rows = [];
-  raw.forEach(t => {
-    const d = derived.transactions[t.id];
-    if (d?.status !== 'kept' || !d.isSplit || !d.splitConfig) return;
-    const absAmount = Math.abs(t.raw.Amount);
-    d.splitConfig.participants.forEach(participant => {
-      rows.push(`${t.id},${participant.name},${getSplitShare(d.splitConfig, absAmount, participant)}`);
-    });
+  const personMap = {};
+  let myShare = 0;
+
+  filteredKept.forEach(t => {
+    if (t.d?.isSplit && t.d.splitConfig) {
+      const sc = t.d.splitConfig;
+      const absAmt = Math.abs(t.raw.Amount);
+      sc.participants.forEach(p => {
+        const share = getSplitShare(sc, absAmt, p);
+        if (p.name === 'Me') myShare += share;
+        else personMap[p.name] = (personMap[p.name] || 0) + share;
+      });
+    } else {
+      myShare += Math.abs(t.raw.Amount);
+    }
   });
-  return headers + '\n' + rows.join('\n');
+
+  const owedToYou = Object.values(personMap).filter(v => v > 0).reduce((sum, value) => sum + value, 0);
+
+  return {
+    total: raw.length,
+    processed: processed.length,
+    kept: kept.length,
+    discarded: discarded.length,
+    filteredCount: filtered.length,
+    filteredKept: filteredKept.length,
+    filteredDiscarded: filteredDiscarded.length,
+    totalKept: filteredKept.reduce((sum, t) => sum + t.raw.Amount, 0),
+    totalSplit: filteredKept.filter(t => t.d?.isSplit).length,
+    myShare,
+    owedToYou,
+    personMap,
+    filtered,
+  };
 }
 
 function dl(content, name, type = 'text/plain') {

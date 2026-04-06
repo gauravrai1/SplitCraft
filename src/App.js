@@ -9,12 +9,33 @@ function App() {
   const [viewIndex, setViewIndex] = useState(0);
   const [statePath, setStatePath] = useState('audit-state');
   const [lastSave, setLastSave] = useState(null);
+  const [mode, setMode] = useState('audit');
+  const [analysisFilters, setAnalysisFilters] = useState({
+    filterType: 'all',
+    customStart: '',
+    customEnd: '',
+    statusFilter: 'audited',
+    splitFilter: 'all',
+    personFilter: 'all',
+    search: '',
+  });
+  const wasCompleteRef = useRef(false);
 
   const handleStart = (cfg, rawTxns, derivedState, path) => {
     setConfig(cfg);
     setRaw(rawTxns);
     setDerived(derivedState);
     setStatePath(path || 'audit-state');
+    setMode('audit');
+    setAnalysisFilters({
+      filterType: 'all',
+      customStart: cfg.filters.startDate || '',
+      customEnd: cfg.filters.endDate || '',
+      statusFilter: 'audited',
+      splitFilter: 'all',
+      personFilter: 'all',
+      search: '',
+    });
     setScreen('audit');
   };
 
@@ -37,11 +58,17 @@ function App() {
     return () => clearTimeout(timer);
   }, [derived, screen, statePath]);
 
-  const statePathRef = useRef(statePath);
+  useEffect(() => {
+    setViewIndex(Math.min(derived.currentIndex, Math.max(raw.length - 1, 0)));
+  }, [derived.currentIndex, raw.length]);
+
+  const isComplete = raw.length > 0 && derived.currentIndex >= raw.length;
 
   useEffect(() => {
-    setViewIndex(derived.currentIndex);
-  }, [derived.currentIndex]);
+    if (isComplete && !wasCompleteRef.current) setMode('analysis');
+    if (!isComplete) setMode('audit');
+    wasCompleteRef.current = isComplete;
+  }, [isComplete]);
 
   const viewTxn = raw[viewIndex];
   const viewDerived = viewTxn ? derived.transactions[viewTxn.id] : null;
@@ -63,7 +90,9 @@ function App() {
         },
       };
     });
-    setViewIndex(viewIndex + 1);
+    const nextIndex = viewIndex + 1;
+    setViewIndex(nextIndex);
+    if (nextIndex >= raw.length) setMode('analysis');
   }, [viewTxn, viewIndex, derived]);
 
   const handleDiscardView = useCallback(() => {
@@ -79,7 +108,9 @@ function App() {
         },
       };
     });
-    setViewIndex(viewIndex + 1);
+    const nextIndex = viewIndex + 1;
+    setViewIndex(nextIndex);
+    if (nextIndex >= raw.length) setMode('analysis');
   }, [viewTxn, viewIndex, derived]);
 
   const handleUndoView = useCallback(() => {
@@ -121,7 +152,7 @@ function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [screen, handleKeepView, handleDiscardView, handleUndoView]);
 
-  const handleExport = useCallback((type) => {
+  const handleExport = useCallback((type, filters) => {
     if (type === 'state') {
       const stateObj = {
         currentIndex: derived.currentIndex,
@@ -129,13 +160,31 @@ function App() {
       };
       dl(JSON.stringify(stateObj, null, 2), 'audit-state.json', 'application/json');
     } else if (type === 'csv') {
-      dl(buildProcessedTransactionsCSV(raw, derived), 'processed-transactions.csv', 'text/csv');
+      dl(buildProcessedTransactionsCSV(raw, derived, filters), 'processed-transactions.csv', 'text/csv');
     } else if (type === 'split') {
-      dl(buildSplitLedgerCSV(raw, derived), 'split-ledger.csv', 'text/csv');
+      dl(buildSplitLedgerCSV(raw, derived, filters), 'split-ledger.csv', 'text/csv');
     }
   }, [raw, derived]);
 
   if (screen === 'config') return <ConfigScreen onStart={handleStart} />;
+
+  if (mode === 'analysis' && isComplete) {
+    return (
+      <AnalysisScreen
+        raw={raw}
+        derived={derived}
+        config={config}
+        filters={analysisFilters}
+        onFiltersChange={setAnalysisFilters}
+        onBack={() => {
+          setMode('audit');
+          setViewIndex(Math.max(raw.length - 1, 0));
+        }}
+        onExport={handleExport}
+        lastSave={lastSave}
+      />
+    );
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
@@ -152,11 +201,11 @@ function App() {
           onUndo={handleUndoView}
           onUpdateDerived={updateDerivedView}
           canUndo={viewIndex > 0}
-          isComplete={viewIndex >= raw.length}
+          isComplete={false}
         />
       </div>
       <div className="w-80 flex-shrink-0">
-        <RightPanel raw={raw} derived={derived} config={config} onExport={handleExport} lastSave={lastSave} />
+        <RightPanel raw={raw} derived={derived} onExport={handleExport} onOpenAnalysis={() => setMode('analysis')} isComplete={isComplete} lastSave={lastSave} />
       </div>
     </div>
   );

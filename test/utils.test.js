@@ -7,7 +7,7 @@ import vm from 'vm';
 function loadUtilsForTest() {
   const utilsPath = path.resolve('src/utils.js');
   const source = fs.readFileSync(utilsPath, 'utf8');
-  const instrumented = `${source}\n;globalThis.__testExports = { parseCSVLine, parseCSV, fmt, pct, escapeCSVField, isSplitConfigValid, buildProcessedTransactionsCSV, buildSplitLedgerCSV, getSplitShare };`;
+  const instrumented = `${source}\n;globalThis.__testExports = { parseCSVLine, parseCSV, fmt, pct, escapeCSVField, isSplitConfigValid, buildProcessedTransactionsCSV, buildSplitLedgerCSV, getSplitShare, getFilteredTransactions, computeAnalysisStats };`;
 
   const context = {
     React: {
@@ -42,6 +42,8 @@ const {
   buildProcessedTransactionsCSV,
   buildSplitLedgerCSV,
   getSplitShare,
+  getFilteredTransactions,
+  computeAnalysisStats,
 } = loadUtilsForTest();
 const normalize = (value) => JSON.parse(JSON.stringify(value));
 
@@ -276,6 +278,28 @@ test('buildProcessedTransactionsCSV exports only processed rows and escapes text
   );
 });
 
+test('buildProcessedTransactionsCSV applies analysis filters to exported rows', () => {
+  const raw = [
+    { id: 't1', raw: { Date: '2026-04-01', Description: 'Coffee', Amount: '10.00', Institution: 'Bank', Account_Type: 'Chequing', Account_Name: 'Main' } },
+    { id: 't2', raw: { Date: '2026-04-02', Description: 'Rent', Amount: '900.00', Institution: 'Bank', Account_Type: 'Chequing', Account_Name: 'Main' } },
+    { id: 't3', raw: { Date: '2026-04-03', Description: 'Pending', Amount: '5.00', Institution: 'Bank', Account_Type: 'Chequing', Account_Name: 'Main' } },
+  ];
+  const derived = {
+    currentIndex: 2,
+    transactions: {
+      t1: { status: 'kept', isSplit: true, splitConfig: { type: 'percentage', participants: [{ name: 'Me', value: 50 }, { name: 'Alex', value: 50 }] } },
+      t2: { status: 'discarded' },
+      t3: { status: 'pending' },
+    },
+  };
+
+  assert.equal(
+    buildProcessedTransactionsCSV(raw, derived, { splitFilter: 'split', statusFilter: 'audited' }),
+    'id,date,description,amount,institution,account_type,account_name,status,is_split,note\n' +
+    't1,2026-04-01,"Coffee",10.00,"Bank","Chequing","Main",kept,true,""'
+  );
+});
+
 test('buildSplitLedgerCSV exports kept split transactions for percentage, equal, and absolute modes', () => {
   const raw = [
     { id: 'p1', raw: { Amount: '100.00' } },
@@ -332,6 +356,61 @@ test('buildSplitLedgerCSV exports kept split transactions for percentage, equal,
     'p3,Me,12\n' +
     'p3,Alex,30'
   );
+});
+
+test('getFilteredTransactions applies status, split, person, search, and date filters together', () => {
+  const raw = [
+    { id: 'a', raw: { Date: '2026-04-01', Description: 'Coffee Shop', Amount: 10, Institution: 'RBC', Account_Type: 'Chequing', Account_Name: 'Main' } },
+    { id: 'b', raw: { Date: '2026-04-05', Description: 'Groceries', Amount: 40, Institution: 'TD', Account_Type: 'Credit Card', Account_Name: 'Visa' } },
+    { id: 'c', raw: { Date: '2026-05-01', Description: 'Rent', Amount: 900, Institution: 'RBC', Account_Type: 'Chequing', Account_Name: 'Main' } },
+  ];
+  const derived = {
+    currentIndex: 3,
+    transactions: {
+      a: { status: 'kept', isSplit: true, splitConfig: { type: 'percentage', participants: [{ name: 'Me', value: 50 }, { name: 'Alex', value: 50 }] } },
+      b: { status: 'discarded', isSplit: false },
+      c: { status: 'kept', isSplit: true, splitConfig: { type: 'percentage', participants: [{ name: 'Me', value: 50 }, { name: 'Sam', value: 50 }] } },
+    },
+  };
+
+  assert.deepEqual(
+    normalize(getFilteredTransactions(raw, derived, {
+      statusFilter: 'kept',
+      splitFilter: 'split',
+      personFilter: 'Alex',
+      search: 'coffee',
+      filterType: 'custom',
+      customStart: '2026-04-01',
+      customEnd: '2026-04-30',
+    }).map(t => t.id)),
+    ['a']
+  );
+});
+
+test('computeAnalysisStats returns filtered counts and balances', () => {
+  const raw = [
+    { id: 'a', raw: { Date: '2026-04-01', Description: 'Dinner', Amount: 60, Institution: 'RBC', Account_Type: 'Credit Card', Account_Name: 'Visa' } },
+    { id: 'b', raw: { Date: '2026-04-02', Description: 'Groceries', Amount: 30, Institution: 'RBC', Account_Type: 'Chequing', Account_Name: 'Main' } },
+    { id: 'c', raw: { Date: '2026-04-03', Description: 'Skipped', Amount: 20, Institution: 'RBC', Account_Type: 'Chequing', Account_Name: 'Main' } },
+  ];
+  const derived = {
+    currentIndex: 3,
+    transactions: {
+      a: { status: 'kept', isSplit: true, splitConfig: { type: 'percentage', participants: [{ name: 'Me', value: 50 }, { name: 'Alex', value: 50 }] } },
+      b: { status: 'kept', isSplit: false },
+      c: { status: 'discarded', isSplit: false },
+    },
+  };
+
+  const stats = normalize(computeAnalysisStats(raw, derived, { statusFilter: 'kept' }));
+
+  assert.equal(stats.filteredCount, 2);
+  assert.equal(stats.filteredKept, 2);
+  assert.equal(stats.filteredDiscarded, 0);
+  assert.equal(stats.totalSplit, 1);
+  assert.equal(stats.myShare, 60);
+  assert.equal(stats.owedToYou, 30);
+  assert.equal(stats.personMap.Alex, 30);
 });
 
 test('fmt returns currency strings and preserves negative sign', () => {
