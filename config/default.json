@@ -1,0 +1,19 @@
+{
+  "appName": "Transaction Audit & Split",
+  "defaultSplit": {
+    "type": "percentage",
+    "participants": [
+      { "name": "Me", "value": 50 },
+      { "name": "Alice", "value": 50 }
+    ]
+  },
+  "people": [
+    "Alice",
+    "Nik",
+    "Jay"
+  ],
+  "filters": {
+    "startDate": "2026-01-31",
+    "endDate": "2026-04-05"
+  }
+}

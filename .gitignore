@@ -1,0 +1,33 @@
+# Node modules
+node_modules/
+npm-debug.log
+
+# Output files (auto-generated)
+output/*.json
+output/*.csv
+
+# Browser storage
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+.cache/
+
+# Environment
+.env
+.env.local
+
+# OS
+Thumbs.db
+.DS_Store

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transaction Audit & Split</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Initialize dark mode before first paint to avoid flash
+    if (localStorage.getItem('darkMode') === 'true' ||
+        (!localStorage.getItem('darkMode') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Load order matters: utils → shared components → panels → App (mounts last) -->
+  <script type="text/babel" src="src/utils.js"></script>
+  <script type="text/babel" src="src/DarkModeToggle.js"></script>
+  <script type="text/babel" src="src/ConfigScreen.js"></script>
+  <script type="text/babel" src="src/LeftPanel.js"></script>
+  <script type="text/babel" src="src/SplitEditor.js"></script>
+  <script type="text/babel" src="src/CenterPanel.js"></script>
+  <script type="text/babel" src="src/RightPanel.js"></script>
+  <script type="text/babel" src="src/App.js"></script>
+</body>
+</html>
