@@ -49,11 +49,8 @@ function App() {
   const handleKeepView = useCallback(() => {
     if (!viewTxn) return;
     const d = derived.transactions[viewTxn.id];
-    if (d?.isSplit && d.splitConfig) {
-      const sc = d.splitConfig;
-      const total = sc.participants.reduce((s, p) => s + p.value, 0);
-      const target = sc.type === 'percentage' ? 100 : Math.abs(viewTxn.raw.Amount);
-      if (Math.abs(total - target) >= 0.02) return;
+    if (d?.isSplit && d.splitConfig && !isSplitConfigValid(d.splitConfig, viewTxn.raw.Amount)) {
+      return;
     }
     setDerived(prev => {
       const newProgress = viewIndex >= prev.currentIndex ? viewIndex + 1 : prev.currentIndex;
@@ -132,31 +129,9 @@ function App() {
       };
       dl(JSON.stringify(stateObj, null, 2), 'audit-state.json', 'application/json');
     } else if (type === 'csv') {
-      const headers = 'id,date,description,amount,institution,account_type,account_name,status,is_split,note';
-      const rows = raw.map(t => {
-        const d = derived.transactions[t.id] || {};
-        if (!d.status || d.status === 'pending') return null;
-        const esc = (s) => `"${String(s || '').replace(/"/g, '""')}"`;
-        return [t.id, t.raw.Date, esc(t.raw.Description), t.raw.Amount, esc(t.raw.Institution), esc(t.raw.Account_Type), esc(t.raw.Account_Name), d.status, d.isSplit || false, esc(d.note || '')].join(',');
-      }).filter(Boolean);
-      dl(headers + '\n' + rows.join('\n'), 'processed-transactions.csv', 'text/csv');
+      dl(buildProcessedTransactionsCSV(raw, derived), 'processed-transactions.csv', 'text/csv');
     } else if (type === 'split') {
-      const headers = 'transaction_id,person,amount';
-      const rows = [];
-      raw.forEach(t => {
-        const d = derived.transactions[t.id];
-        if (d?.status !== 'kept' || !d.isSplit || !d.splitConfig) return;
-        const sc = d.splitConfig;
-        const absAmt = Math.abs(t.raw.Amount);
-        sc.participants.forEach(p => {
-          let share;
-          if (sc.type === 'percentage') share = +(absAmt * p.value / 100).toFixed(2);
-          else if (sc.type === 'equal') share = +(absAmt / sc.participants.length).toFixed(2);
-          else share = p.value;
-          rows.push(`${t.id},${p.name},${share}`);
-        });
-      });
-      dl(headers + '\n' + rows.join('\n'), 'split-ledger.csv', 'text/csv');
+      dl(buildSplitLedgerCSV(raw, derived), 'split-ledger.csv', 'text/csv');
     }
   }, [raw, derived]);
 

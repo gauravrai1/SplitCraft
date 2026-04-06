@@ -33,6 +33,59 @@ function parseCSV(text) {
   }).filter(r => r.Date && r.Amount && !isNaN(parseFloat(r.Amount)));
 }
 
+function escapeCSVField(value) {
+  return `"${String(value || '').replace(/"/g, '""')}"`;
+}
+
+function isSplitConfigValid(splitConfig, amount) {
+  if (!splitConfig) return true;
+  const participants = splitConfig.participants || [];
+  const total = participants.reduce((sum, participant) => sum + participant.value, 0);
+  const target = splitConfig.type === 'percentage' ? 100 : Math.abs(amount);
+  return Math.abs(total - target) < 0.02;
+}
+
+function buildProcessedTransactionsCSV(raw, derived) {
+  const headers = 'id,date,description,amount,institution,account_type,account_name,status,is_split,note';
+  const rows = raw.map(t => {
+    const d = derived.transactions[t.id] || {};
+    if (!d.status || d.status === 'pending') return null;
+    return [
+      t.id,
+      t.raw.Date,
+      escapeCSVField(t.raw.Description),
+      t.raw.Amount,
+      escapeCSVField(t.raw.Institution),
+      escapeCSVField(t.raw.Account_Type),
+      escapeCSVField(t.raw.Account_Name),
+      d.status,
+      d.isSplit || false,
+      escapeCSVField(d.note || ''),
+    ].join(',');
+  }).filter(Boolean);
+  return headers + '\n' + rows.join('\n');
+}
+
+function getSplitShare(splitConfig, absAmount, participant) {
+  if (splitConfig.type === 'percentage') return +(absAmount * participant.value / 100).toFixed(2);
+  if (splitConfig.type === 'equal') return +(absAmount / splitConfig.participants.length).toFixed(2);
+  return participant.value;
+}
+
+function buildSplitLedgerCSV(raw, derived) {
+  const headers = 'transaction_id,person,amount';
+  const rows = [];
+  raw.forEach(t => {
+    const d = derived.transactions[t.id];
+    if (d?.status !== 'kept' || !d.isSplit || !d.splitConfig) return;
+    const absAmount = Math.abs(t.raw.Amount);
+    d.splitConfig.participants.forEach(participant => {
+      rows.push(`${t.id},${participant.name},${getSplitShare(d.splitConfig, absAmount, participant)}`);
+    });
+  });
+  return headers + '\n' + rows.join('\n');
+}
+
 function dl(content, name, type = 'text/plain') {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([content], { type }));
