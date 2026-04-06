@@ -1,10 +1,23 @@
-# 🧾 Transaction Audit & Split App
+# 🧾 SplitCraft
 
 A local-first web application for auditing transactions, classifying expenses, and splitting costs across people.
+
+## 📸 Screenshots
+
+### Start Screen
+
+![SplitCraft start screen](./media/start_screen.png)
+
+### Auditing Screen
+
+![SplitCraft auditing screen](./media/auditing_screen.png)
 
 ## 📁 Folder Structure
 
 ```
+├── media/
+│   ├── start_screen.png          # App start screen screenshot
+│   └── auditing_screen.png       # App auditing screen screenshot
 ├── config/
 │   └── default.json              # Configuration (people, splits, date filters)
 ├── input/
